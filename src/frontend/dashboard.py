@@ -11,12 +11,19 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# --- State Management ---
+if 'prompt' not in st.session_state:
+    st.session_state['prompt'] = ""
+
+def set_prompt(text):
+    st.session_state['prompt'] = text
+
 # --- JEEVA AI Style (Deep Dark SaaS) ---
 st.markdown("""
 <style>
 /* Global Reset & Dark Mode */
 .stApp {
-    background-color: #000000;
+    background-color: #050505; /* Deep Black */
     color: #FFFFFF;
     font-family: 'Inter', 'Segoe UI', Roboto, sans-serif;
 }
@@ -69,14 +76,14 @@ footer {display: none;}
 
 /* Centered Input Styling */
 .stTextInput > div > div > input {
-    background-color: #0A0A0A !important;
+    background-color: #111111 !important;
     color: #FFFFFF !important;
-    border: 1px solid #222 !important;
+    border: 1px solid #333 !important;
     border-radius: 12px;
     padding: 20px;
     font-size: 16px;
     text-align: left;
-    height: 60px;
+    height: 60px; /* Taller input */
     box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
 .stTextInput > div > div > input:focus {
@@ -84,27 +91,56 @@ footer {display: none;}
     box-shadow: 0 0 0 2px rgba(255,255,255,0.1);
 }
 
-/* Suggestion Pills */
-.pill-container {
-    display: flex;
-    justify-content: center;
-    gap: 10px;
-    margin-top: 20px;
-}
-.pill {
-    background-color: #111;
-    border: 1px solid #222;
-    color: #888;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-size: 13px;
-    cursor: pointer;
+/* Primary Button (Electric Blue) */
+.stButton > button {
+    background-color: #0066FF !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 12px !important;
+    height: 60px;
+    font-weight: 600;
+    font-size: 16px;
+    width: 100%;
     transition: all 0.2s;
 }
-.pill:hover {
-    border-color: #444;
-    color: #FFF;
+.stButton > button:hover {
+    background-color: #0052cc !important;
+    box-shadow: 0 0 15px rgba(0, 102, 255, 0.4);
 }
+
+/* Suggestion Pills (Styled Buttons) */
+/* We target specific buttons by using columns or custom classes if possible, 
+   but Streamlit buttons are generic. We'll use a hack or just standard button styling
+   that looks different for lighter weights if needed. 
+   For now, we will make "Pills" look like secondary buttons. */
+div[data-testid="column"] .stButton > button {
+    /* If we wanted distinct styles for pills vs primary, we'd need more specific selectors or custom components.
+       For now, we'll assume the primary button is in the main column and pills are below.
+       Let's use a subtle override logic based on layout if possible, or just style them all cleanly.
+       Actually, let's make the Pill buttons Dark Grey. */
+    background-color: #1A1A1A !important; 
+    border: 1px solid #333 !important;
+    color: #B0B0B0 !important;
+}
+/* But wait, the Primary "EXECUTE" button needs to be Blue. 
+   We'll use type="primary" for the Execute button and default for pills. */
+button[kind="primary"] {
+    background-color: #0066FF !important;
+    color: white !important;
+    border: none !important;
+}
+button[kind="secondary"] {
+    background-color: #1A1A1A !important;
+    border: 1px solid #333 !important;
+    color: #B0B0B0 !important;
+    border-radius: 20px !important; /* Pill shape */
+    height: 40px !important;
+}
+button[kind="secondary"]:hover {
+    border-color: #0066FF !important;
+    color: #FFFFFF !important;
+}
+
 
 /* Mission Report Card */
 .report-card {
@@ -148,39 +184,87 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Layout: Hero Section ---
-c1, c2, c3 = st.columns([1, 2, 1])
-with c2:
+_, main_col, _ = st.columns([1, 2, 1])
+
+with main_col:
     st.markdown('<div class="hero-container">', unsafe_allow_html=True)
     st.markdown('<div class="hero-title">Agentic AI for Your Desktop</div>', unsafe_allow_html=True)
     st.markdown('<div class="hero-subtitle">Orchestrate complex workflows with autonomous agents.</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # --- Command Interface ---
-    query = st.text_input("", placeholder="Ask Aether to execute a task...", label_visibility="collapsed")
+    # --- Command Interface (2 Columns: Input + Button) ---
+    input_col, btn_col = st.columns([4, 1])
     
-    # --- Suggestion Pills (Visual Only) ---
-    st.markdown("""
-    <div class="pill-container">
-        <div class="pill">Research Company</div>
-        <div class="pill">Write Code</div>
-        <div class="pill">Analyze Data</div>
-        <div class="pill">Find Leads</div>
-    </div>
-    """, unsafe_allow_html=True)
+    with input_col:
+        # Binding to session state 'prompt'
+        user_input = st.text_input(
+            "Command", 
+            value=st.session_state['prompt'], 
+            placeholder="Ask Aether to execute a task...", 
+            label_visibility="collapsed",
+            key="widget_prompt"
+        )
+    
+    with btn_col:
+        # Primary Action Button
+        execute_clicked = st.button("🚀 EXECUTE", type="primary", use_container_width=True)
 
-# --- Result Section ---
-if query:
+    # --- Suggestion Pills (Interactive) ---
+    # We use 4 columns for pills
+    p1, p2, p3, p4 = st.columns(4)
+    
+    with p1:
+        if st.button("🔍 Research Company", use_container_width=True):
+            set_prompt("Research [Company Name] and summarize key products")
+            st.rerun()
+            
+    with p2:
+        if st.button("💻 Write Code", use_container_width=True):
+            set_prompt("Create a Python script to analyze specific data")
+            st.rerun()
+            
+    with p3:
+        if st.button("📊 Analyze Data", use_container_width=True):
+            set_prompt("Analyze the latest market trends for AI")
+            st.rerun()
+            
+    with p4:
+        if st.button("🕵️ Find Leads", use_container_width=True):
+            set_prompt("Find potential clients in the SaaS sector")
+            st.rerun()
+
+# --- Logic: Execution ---
+# Execute if Button Clicked OR (Input is not empty AND it changed/enter pressed logic implied by streamlint reruns)
+# Streamlit text_input doesn't have an explicit "on_enter" boolean, but we can check if it has content and if 'execute_clicked'
+
+trigger_execution = False
+if execute_clicked and user_input:
+    trigger_execution = True
+elif user_input and user_input != st.session_state.get('last_executed', ''):
+    # This acts as a simple debounce/check if we want to run on enter. 
+    # However, standard practice without a form is: button click or explicit instruction.
+    # To support "Enter", usually `st.form` is best, but visual requirement is specific.
+    # We'll rely on the Button for the explicit "Execute", but if the user wants "Enter" support, 
+    # we can treat the text_input's change as a trigger if we update state.
+    # For this simplified mock, let's rely on the BUTTON for the main trigger to avoid loopiness,
+    # OR trigger anytime the widget text changes and is not empty (which happens on Enter).
+    trigger_execution = True
+
+# Update session state to avoid re-running identical prompts instantly
+if trigger_execution:
+    st.session_state['last_executed'] = user_input
+    
     st.markdown("---")
     
     # Spinner
     with st.spinner("Processing intent..."):
-        time.sleep(1.5) # Simulate work
+        time.sleep(1.2) # Simulate work
         
     # Mock Report UI
     st.markdown(f"""
     <div class="report-card">
         <div class="report-header">
-            <div class="report-title">Mission Report: {query}</div>
+            <div class="report-title">Mission Report: {user_input}</div>
             <div class="report-meta">ID: {random.randint(1000,9999)} • {datetime.datetime.now().strftime('%H:%M:%S')}</div>
         </div>
     """, unsafe_allow_html=True)
@@ -190,11 +274,11 @@ if query:
     
     with col1:
         st.markdown("### 📝 Executive Summary")
-        st.markdown(f"The system has successfully analyzed the parameters for '**{query}**'. Agents were deployed to gather intelligence and synthesize a strategic response.")
+        st.markdown(f"The system has successfully analyzed the parameters for '**{user_input}**'. Agents were deployed to gather intelligence and synthesize a strategic response.")
         
         st.markdown("### 🔑 Key Findings")
         st.info("• Signal detected in primary sector.")
-        st.info("• Correlation coefficient: 0.98 (High Confidence).")
+        st.info(f"• Target entity '{user_input[:15]}...' identified.")
         st.info("• Architecture validation complete.")
         
     with col2:
