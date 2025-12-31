@@ -51,8 +51,15 @@ class NexusEngine:
             # 2. Generate Plan
             try:
                 logger.info("Generating Plan...")
-                plan_steps = await planner.generate_plan(intent)
+                plan_data = await planner.generate_plan(intent)
+                
+                # Handle dual output: reply + plan
+                assistant_reply = plan_data.get("assistant_reply", "Processing request.")
+                plan_steps = plan_data.get("execution_plan", [])
+                
+                logger.info(f"Assistant Reply: {assistant_reply}")
                 logger.info(f"Plan Generated with {len(plan_steps)} steps.")
+                
             except Exception as e:
                 logger.error(f"Planning failed: {e}")
                 return TaskResponse(
@@ -69,13 +76,18 @@ class NexusEngine:
                 )
 
             artifacts: List[ActionArtifact] = []
+            mission_log: List[str] = []
+            mission_log.append(f"🏁 **Mission Started**: {intent}")
             
             # 3. Execution Loop
             for i, step in enumerate(plan_steps):
                 worker_name_raw = step.get("worker", "UNKNOWN")
                 worker_name = worker_name_raw.upper()
+                target = step.get("path") or step.get("url") or step.get("query") or "N/A"
                 
-                logger.info(f"Executing Step {i+1}/{len(plan_steps)}: {worker_name} -> {step.get('action')}")
+                log_msg = f"⚙️ **Step {i+1}**: {worker_name} executing {step.get('action')} on `{target}`..."
+                logger.info(log_msg)
+                mission_log.append(log_msg)
                 
                 worker = self.workers.get(worker_name)
                 
@@ -87,8 +99,15 @@ class NexusEngine:
                         # Log to Cortex
                         await cortex.add_log(session_id, artifact.model_dump(mode='json'))
                         
+                        # Add to Mission Log
+                        if "SUCCESS" in artifact.output_result:
+                            mission_log.append(f"✅ **Success**: {artifact.output_result}")
+                        else:
+                            mission_log.append(f"❌ **Failure**: {artifact.output_result}")
+                        
                     except Exception as e:
                         logger.error(f"Worker {worker_name} failed: {e}")
+                        mission_log.append(f"💥 **Critical Error**: {e}")
                         # Create a failure artifact
                         error_artifact = ActionArtifact(
                              agent_id=worker_name,
@@ -123,7 +142,9 @@ class NexusEngine:
             return TaskResponse(
                 status=status,
                 plan_id=plan_id,
-                artifacts=artifacts
+                artifacts=artifacts,
+                assistant_reply=assistant_reply,
+                mission_log=mission_log
             )
             
         finally:

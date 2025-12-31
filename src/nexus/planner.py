@@ -71,34 +71,67 @@ class Planner:
         
         raise PlanningError(f"Max retries ({max_retries}) exceeded.")
 
-    async def generate_plan(self, intent: str, history: List[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    async def generate_plan(self, intent: str, history: List[Dict[str, str]] = None) -> Dict[str, Any]:
         """
-        Generates a list of steps (DAG) to execute the intent.
+        Generates a plan containing an assistant reply and execution steps.
+        Returns:
+            {
+                "assistant_reply": str,
+                "execution_plan": List[Dict]
+            }
         """
         if not self.client:
             # Mock mode fallback
             logger.info("Generating MOCK plan (No API Key).")
-            return [
-                {"worker": "ARCHITECT", "action": "WRITE", "path": "temp/hello_mock.txt", "content": "Hello from Mock Planner!"},
-                {"worker": "NAVIGATOR", "action": "SEARCH", "query": "Mock Search"},
-            ]
+            return {
+                "assistant_reply": f"I'm operating in Mock Mode, but I'll simulate a plan to {intent}.",
+                "execution_plan": [
+                    {"worker": "ARCHITECT", "action": "WRITE", "path": "temp/hello_mock.txt", "content": "Hello from Mock Planner!"},
+                    {"worker": "NAVIGATOR", "action": "SEARCH", "query": "Mock Search"},
+                ]
+            }
 
         # Construct System Prompt
-        system_prompt = """You are The Nexus, an autonomous project manager.
-Goal: {intent}
-Available Workers: 
-- Navigator (web search). Actions: SEARCH (query), FETCH (url).
-- Architect (file I/O, execute code). Actions: WRITE (path, content), READ (path), DELETE (path), EXECUTE (command).
-- Analyst (data proc). Actions: ANALYZE_CSV (file_path), GENERATE_PDF (content, output_path).
+        system_prompt = """
+You are AETHER (Autonomous Executive Task & High-Efficiency Router).
+You are a "Cognitive Operating Layer" capable of orchestrating a fleet of specialized AI workers.
 
-Output Format: JSON ONLY.
-Schema:
+### YOUR GOAL
+Your objective is to receive a user intent ("{intent}"), analyze it, and generate a structured plan to execute it using your available tools.
+
+### AVAILABLE WORKERS
+1. [NAVIGATOR]: A web browsing agent. 
+   - Capabilities: SEARCH (query), FETCH (url).
+   - Use for: Research, news, fact-checking, summarizing websites.
+2. [ARCHITECT]: A file system and engineering agent.
+   - Capabilities: WRITE (path, content), READ (path), DELETE (path), EXECUTE (command).
+   - Use for: Coding, saving reports, data processing, file management.
+3. [ANALYST]: A logic agent. 
+   - Capabilities: ANALYZE.
+   - Use for: Synthesizing large data.
+
+### OUTPUT PROTOCOL (CRITICAL)
+You must ALWAYS output a valid JSON object. Do not output markdown blocks or conversational text outside the JSON.
+
+The JSON must follow this exact schema:
 {{
-  "reasoning": "Brief explanation of strategy...",
-  "steps": [
-     {{"worker": "Navigator", "action": "SEARCH", "query": "search query..."}},
-     {{"worker": "Architect", "action": "WRITE", "path": "/path/to/file.py", "content": "code content..."}}
-  ]
+    "thought_process": "Internal monologue. Briefly analyze the request and the best strategy.",
+    "assistant_reply": "A friendly, natural language response to the user. Explain what you are about to do (e.g., 'I will search for X and then save it to Y').",
+    "execution_plan": [
+        {{
+            "worker": "NAVIGATOR",
+            "action": "SEARCH",
+            "query": "search query...",
+            "rationale": "Need real-time data to answer the prompt."
+        }},
+        {{
+            "worker": "ARCHITECT",
+            "action": "WRITE",
+            "path": "/path/to/file.md",
+            "content": "File content here...",
+            "rationale": "User requested a written report."
+        }}
+    ]
 }}
 """.format(intent=intent)
 
@@ -119,10 +152,17 @@ Schema:
                 
             data = json.loads(raw_text)
             
-            if "steps" not in data:
-                 raise PlanningError("Response missing 'steps' key.")
+            # Log the cognitive process
+            if "thought_process" in data:
+                logger.info(f"🧠 AETHER Thoughts: {data['thought_process']}")
             
-            return data["steps"]
+            if "execution_plan" not in data or "assistant_reply" not in data:
+                 raise PlanningError("Response missing 'execution_plan' or 'assistant_reply' key.")
+            
+            return {
+                "assistant_reply": data["assistant_reply"],
+                "execution_plan": data["execution_plan"]
+            }
             
         except json.JSONDecodeError as e:
             logger.error(f"JSON Parse Error: {e}")
@@ -131,24 +171,28 @@ Schema:
             logger.error(f"Gemini API Error after retries: {e}")
             logger.warning("⚠️  API Failed. Falling back to MOCK DEMO PLAN.")
             
-            # Fallback Plan that demonstrates capabilities (tuned for the HN request)
-            return [
-                {
-                    "worker": "NAVIGATOR", 
-                    "action": "SEARCH", 
-                    "query": "Hacker News top story"
-                },
-                {
-                    "worker": "ARCHITECT", 
-                    "action": "WRITE", 
-                    "path": "hn_top_story.md", 
-                    "content": "# Hacker News Top Story\n\n(This is a generated mock summary as the AI Brain is currently rate-limited)\n\n## Discussion Summary\nThe community is discussing the implications of AGI on traditional software engineering.\n\n### Main Arguments:\n- AI will shift focus from syntax to semantics.\n- Legacy code maintenance will become easier.\n- Junior developers need new training paradigms."
-                },
-                {
-                    "worker": "ARCHITECT",
-                    "action": "EXECUTE",
-                    "command": "dir" 
-                }
-            ]
+            # Fallback Plan that demonstrates capabilities (Dynamic based on Intent)
+            logger.warning(f"Returning Mock Plan for intent: {intent}")
+            return {
+                "assistant_reply": f"I'm encountering some interference with the API network, but I'll deploy a simulation to address your request: '{intent}'.",
+                "execution_plan": [
+                    {
+                        "worker": "NAVIGATOR", 
+                        "action": "SEARCH", 
+                        "query": intent  # Use the user's actual intent
+                    },
+                    {
+                        "worker": "ARCHITECT", 
+                        "action": "WRITE", 
+                        "path": "mission_report.md", 
+                        "content": f"# Mission Report: {intent}\n\n(This is a generated mock summary as the AI Brain is currently rate-limited)\n\n## Analysis\nThe system has processed the request to '{intent}'.\n\n### Key Findings (Simulated):\n- Found 3 relevant sources.\n- Synthesized key data points.\n- Verified autonomy constraints."
+                    },
+                    {
+                        "worker": "ARCHITECT",
+                        "action": "EXECUTE",
+                        "command": "dir" 
+                    }
+                ]
+            }
 
 planner = Planner()

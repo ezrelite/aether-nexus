@@ -18,3 +18,5 @@ class TaskResponse(BaseModel):
     status: str = Field(..., description="Overall status (e.g., COMPLETED, FAILED)")
     plan_id: UUID = Field(..., description="Unique Identifier for the generated plan")
     artifacts: List[ActionArtifact] = Field(default_factory=list, description="List of actions taken")
+    assistant_reply: Optional[str] = Field(None, description="Conversational reply from the AI")
+    mission_log: List[str] = Field(default_factory=list, description="Human-readable log of execution steps")
