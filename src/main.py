@@ -49,8 +49,8 @@ async def run_task(request: TaskRequest):
     Execute a task via the Nexus Engine.
     """
     try:
-        # Pass intent to Nexus
-        response = await nexus.run(request.intent)
+        # Pass intent and autonomy to Nexus
+        response = await nexus.run(request.intent, autonomy_level=request.autonomy_level)
         return response
     except Exception as e:
         logger.error(f"Error processing request: {e}", exc_info=True)

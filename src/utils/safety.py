@@ -29,8 +29,10 @@ class SafetyManager:
         """
         if not settings.SAFETY_MODE:
             # If safety mode is OFF (Autonomy Level HIGH), allow everything (but log it)
-            logger.info(f"SAFETY_MODE=False. Allowing destructive action: {action_type} on {target}")
+            logger.info(f"SAFETY_MODE={settings.SAFETY_MODE}. Allowing destructive action: {action_type} on {target}")
             return True
+
+        logger.info(f"Checking Safety: Mode={settings.SAFETY_MODE}, Action={action_type}")
 
         if action_type in SafetyManager.DESTRUCTIVE_ACTIONS:
             logger.warning(f"SAFETY ALERT: Blocked destructive action '{action_type}' on '{target}' because SAFETY_MODE is ON.")
