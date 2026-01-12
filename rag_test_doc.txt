@@ -1,0 +1,6 @@
+
+    Project Aether is a unified AI agent.
+    It uses Groq Llama 3 for intelligence.
+    It stores memory in memory.json.
+    Phase 24 added Semantic Search using ChromaDB.
+    

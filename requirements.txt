@@ -1,0 +1,8 @@
+streamlit
+groq
+duckduckgo-search
+chromadb
+sentence-transformers
+pypdf
+python-dotenv
+# edge-tts # Upcoming for Phase 25

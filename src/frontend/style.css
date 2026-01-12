@@ -1,158 +1,68 @@
-/* Main Background */
+/* GLOBAL THEME */
 .stApp {
     background-color: #050505;
     font-family: 'Inter', sans-serif;
-    color: #FFFFFF;
 }
 
-/* Hide Default Elements */
-[data-testid="stHeader"] {display: none;}
-[data-testid="stSidebar"] {display: none;}
-footer {display: none;}
-
-/* Navbar Styling */
-.navbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 24px 40px;
-    border-bottom: 1px solid #111;
-    background-color: rgba(5, 5, 5, 0.9);
-    position: sticky;
-    top: 0;
-    z-index: 999;
-}
-.navbar-brand {
-    font-size: 20px;
-    font-weight: 800;
-    color: #FFFFFF;
-    letter-spacing: -0.5px;
-}
-.navbar-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background-color: #0A0A0A;
-    border: 1px solid #222;
-    padding: 6px 16px;
-    border-radius: 100px;
-}
-.status-dot {
-    width: 8px;
-    height: 8px;
-    background-color: #00FF99;
-    border-radius: 50%;
-    box-shadow: 0 0 8px rgba(0, 255, 153, 0.5);
-}
-.status-text {
-    font-size: 12px;
-    font-weight: 600;
-    color: #E0E0E0;
-    letter-spacing: 0.5px;
+/* HIDE DEFAULT LABELS */
+.stTextInput label {
+    display: none;
 }
 
-/* Hero Typography */
-.hero-container {
-    text-align: center;
-    margin-top: 60px;
-    margin-bottom: 30px;
-}
-.hero-title {
-    font-size: 56px;
-    font-weight: 700;
-    color: #FFFFFF;
-    margin-bottom: 16px;
-    letter-spacing: -1px;
-}
-.hero-subtitle {
-    font-size: 18px;
-    color: #888;
-    font-weight: 400;
-    line-height: 1.5;
-}
-
-/* Input Box - Responsive Width */
-.stTextInput > div > div > input {
+/* INPUT BOX STYLING */
+/* We target the input internal element */
+div[data-testid="stTextInput"] input {
     background-color: #111111;
     color: #ffffff;
     border: 1px solid #333333;
     border-radius: 12px;
-    height: 50px;
-    padding: 0 15px;
-}
-.stTextInput > div > div > input:focus {
-    border-color: #555 !important;
+    height: 55px;
+    padding: 0 20px;
+    font-size: 16px;
 }
 
-/* Primary Button - Fixed Height, Fluid Width */
-div.stButton > button[kind="primary"] {
+div[data-testid="stTextInput"] input:focus {
+    border-color: #0066FF;
+    box-shadow: 0 0 10px rgba(0, 102, 255, 0.2);
+}
+
+/* PRIMARY BUTTON STYLING */
+/* Crucial: flex-shrink: 0 prevents squashing */
+div.stButton>button[kind="primary"] {
     background-color: #0066FF;
     color: white;
     border: none;
     border-radius: 12px;
-    height: 50px !important;
-    margin-top: 0px !important;
-    
-    /* CRITICAL FIXES FOR ZOOM */
-    white-space: nowrap !important; /* Prevents text wrapping */
-    min-width: 100px !important;    /* Prevents squashing */
-    padding: 0 25px !important;
+    height: 55px !important;
     font-weight: 600;
-}
-div.stButton > button[kind="primary"]:hover {
-    background-color: #0052cc !important;
-    box-shadow: 0 0 16px rgba(0, 102, 255, 0.3);
+    font-size: 16px;
+    margin-top: 0px !important;
+
+    /* RESPONSIVE SAFETY LOCKS */
+    white-space: nowrap !important;
+    min-width: 140px !important;
+    flex-shrink: 0 !important;
+    width: 100%;
 }
 
-/* Suggestion Pills - Better Spacing */
-div.stButton > button[kind="secondary"] {
+div.stButton>button[kind="primary"]:hover {
+    background-color: #0052CC;
+    box-shadow: 0 0 15px rgba(0, 102, 255, 0.4);
+}
+
+/* SUGGESTION PILLS (SECONDARY BUTTONS) */
+div.stButton>button[kind="secondary"] {
     background-color: #1A1A1A;
     color: #B0B0B0;
     border: 1px solid #333333;
-    border-radius: 20px;
+    border-radius: 100px;
     height: 40px;
+    font-size: 14px;
     width: 100%;
 }
-div.stButton > button[kind="secondary"]:hover {
+
+div.stButton>button[kind="secondary"]:hover {
     border-color: #0066FF;
     color: #ffffff;
-    background-color: #161616 !important;
-}
-
-/* Remove default labels to save space */
-label[data-testid="stWidgetLabel"] { display: none; }
-
-/* Mission Report Card */
-.report-card {
-    background-color: #0A0A0A;
-    border: 1px solid #1F1F1F;
-    border-radius: 20px;
-    padding: 40px;
-    margin-top: 50px;
-    animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-@keyframes slideUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-.report-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 30px;
-    border-bottom: 1px solid #1F1F1F;
-    padding-bottom: 20px;
-}
-.report-title {
-    font-size: 18px;
-    font-weight: 600;
-    color: #FFF;
-}
-.report-badge {
-    background: rgba(0, 255, 153, 0.1);
-    color: #00FF99;
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
+    background-color: #222222;
 }

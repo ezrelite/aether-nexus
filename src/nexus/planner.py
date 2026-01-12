@@ -1,98 +1,41 @@
-import logging
+import google.generativeai as genai
+import os
 import json
-import asyncio
-import re
-from google import genai
-from google.genai import types
-from google.genai.errors import ClientError
-from typing import List, Dict, Any
+import hashlib
+import logging
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
+from google.api_core.exceptions import ResourceExhausted
 from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-class PlanningError(Exception):
-    """Raised when plan generation fails."""
-    pass
+# 1. Setup
+api_key = os.getenv("GOOGLE_API_KEY") or settings.GOOGLE_API_KEY
+if api_key:
+    genai.configure(api_key=api_key)
+else:
+    logger.warning("GOOGLE_API_KEY not found. Operations may fail.")
 
-class Planner:
-    """
-    The Planner: Decomposes intents into steps using Gemini (google-genai SDK).
-    """
-    def __init__(self):
-        if settings.GOOGLE_API_KEY:
-            self.client = genai.Client(api_key=settings.GOOGLE_API_KEY)
-        else:
-            logger.warning("GOOGLE_API_KEY not found. Planner operating in MOCK mode.")
-            self.client = None
+# 2. The Standard Model
+# Using 'gemini-pro-latest' as 'gemini-pro' is deprecated/renamed
+try:
+    model = genai.GenerativeModel('gemini-pro-latest')
+except Exception as e:
+    logger.error(f"Error initializing model: {e}")
+    model = None
 
-    async def _call_gemini_api(self, prompt: str) -> str:
-        """Helper to call API with manual retry loop for 429s."""
-        max_retries = 5
-        attempt = 0
-        
-        while attempt < max_retries:
-            try:
-                # Using gemini-2.0-flash
-                response = await self.client.aio.models.generate_content(
-                    model="gemini-2.0-flash", 
-                    contents=prompt,
-                    config={"response_mime_type": "application/json"}
-                )
-                return response.text
-            
-            except ClientError as e:
-                # Check for 429 Resource Exhausted
-                if e.code == 429:
-                    attempt += 1
-                    logger.warning(f"429 Rate Limit hit. Attempt {attempt}/{max_retries}.")
-                    
-                    # Try to parse 'retry in X seconds' from message
-                    wait_time = 60 # Default safe wait
-                    try:
-                        # Regex to find float number before 's'
-                        match = re.search(r"retry in (\d+\.\d+)s", str(e.message))
-                        if match:
-                            wait_time = float(match.group(1)) + 1 # Add buffer
-                            logger.info(f"Parsed wait time: {wait_time}s")
-                    except:
-                        pass
-                    
-                    logger.info(f"Sleeping for {wait_time}s before retry...")
-                    await asyncio.sleep(wait_time)
-                else:
-                    # Non-retriable client error (e.g. 400, 403, 404)
-                    raise e
-            except Exception as e:
-                 # Other exceptions (network, etc) - simple backoff
-                 attempt += 1
-                 wait_time = 5 * attempt
-                 logger.warning(f"API Error: {e}. Retrying in {wait_time}s...")
-                 await asyncio.sleep(wait_time)
-        
-        raise PlanningError(f"Max retries ({max_retries}) exceeded.")
+# CACHE SETUP
+CACHE_FILE = "response_cache.json"
+if not os.path.exists(CACHE_FILE):
+    try:
+        with open(CACHE_FILE, 'w') as f: json.dump({}, f)
+    except Exception:
+        pass # Handle permission errors gracefully-ish
 
-    async def generate_plan(self, intent: str, history: List[Dict[str, str]] = None) -> Dict[str, Any]:
-        """
-        Generates a plan containing an assistant reply and execution steps.
-        Returns:
-            {
-                "assistant_reply": str,
-                "execution_plan": List[Dict]
-            }
-        """
-        if not self.client:
-            # Mock mode fallback
-            logger.info("Generating MOCK plan (No API Key).")
-            return {
-                "assistant_reply": f"I'm operating in Mock Mode, but I'll simulate a plan to {intent}.",
-                "execution_plan": [
-                    {"worker": "ARCHITECT", "action": "WRITE", "path": "temp/hello_mock.txt", "content": "Hello from Mock Planner!"},
-                    {"worker": "NAVIGATOR", "action": "SEARCH", "query": "Mock Search"},
-                ]
-            }
+def get_cache_key(text):
+    return hashlib.md5(text.encode()).hexdigest()
 
-        # Construct System Prompt
-        system_prompt = """
+SYSTEM_PROMPT = """
 You are AETHER (Autonomous Executive Task & High-Efficiency Router).
 You are a "Cognitive Operating Layer" capable of orchestrating a fleet of specialized AI workers.
 
@@ -133,66 +76,90 @@ The JSON must follow this exact schema:
         }}
     ]
 }}
-""".format(intent=intent)
+"""
 
-        # Context / History Injection
-        full_prompt = system_prompt
-        if history:
-            full_prompt += "\n\n--- Context / History ---\n"
-            for item in history:
-                full_prompt += f"{item}\n"
+# THE SMART RETRY LOGIC
+# If we hit a limit, we wait 2s, then 4s, then 8s... up to 60s
+@retry(
+    retry=retry_if_exception_type(ResourceExhausted),
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=2, min=10, max=120),
+    before_sleep=before_sleep_log(logger, logging.WARNING)
+)
+def call_gemini_safe(prompt):
+    if not model:
+        raise Exception("Model not initialized.")
+    response = model.generate_content(prompt)
+    return response.text
 
+def generate_plan_sync(user_input):
+    # 1. CHECK CACHE FIRST (Save API calls)
+    cache_key = get_cache_key(user_input)
+    try:
+        if os.path.exists(CACHE_FILE):
+            with open(CACHE_FILE, 'r') as f: cache = json.load(f)
+            if cache_key in cache:
+                logger.info("⚡ Using Cached Response (Zero API Cost)")
+                return cache[cache_key]
+    except Exception as e:
+        logger.warning(f"Cache Read Error: {e}")
+
+    # 2. CALL GOOGLE (With Retry Safety)
+    try:
+        full_prompt = f"{SYSTEM_PROMPT.format(intent=user_input)}\nUSER INTENT: {user_input}"
+        plan_text = call_gemini_safe(full_prompt)
+        
+        # 3. SAVE TO CACHE
         try:
-            logger.info(f"Sending prompt to Gemini (Length: {len(full_prompt)})")
+            current_cache = {}
+            if os.path.exists(CACHE_FILE):
+                with open(CACHE_FILE, 'r') as f:
+                    try:
+                        current_cache = json.load(f)
+                    except json.JSONDecodeError:
+                        current_cache = {}
             
-            raw_text = await self._call_gemini_api(full_prompt)
-            
-            if not raw_text:
-                raise PlanningError("Received empty response from Gemini.")
-                
-            data = json.loads(raw_text)
-            
-            # Log the cognitive process
-            if "thought_process" in data:
-                logger.info(f"🧠 AETHER Thoughts: {data['thought_process']}")
-            
-            if "execution_plan" not in data or "assistant_reply" not in data:
-                 raise PlanningError("Response missing 'execution_plan' or 'assistant_reply' key.")
-            
-            return {
-                "assistant_reply": data["assistant_reply"],
-                "execution_plan": data["execution_plan"]
-            }
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON Parse Error: {e}")
-            raise PlanningError(f"Failed to parse JSON plan: {e}")
+            current_cache[cache_key] = plan_text
+            with open(CACHE_FILE, 'w') as f: json.dump(current_cache, f)
         except Exception as e:
-            logger.error(f"Gemini API Error after retries: {e}")
-            logger.warning("⚠️  API Failed. Falling back to MOCK DEMO PLAN.")
+             logger.warning(f"Cache Write Error: {e}")
+        
+        return plan_text
+        
+    except Exception as e:
+        logger.error(f"Generative API Error: {e}")
+        return json.dumps({
+            "assistant_reply": f"I am overloaded. Please wait 1 minute. (Error: {str(e)})", 
+            "execution_plan": []
+        })
+
+class Planner:
+    """
+    Wrapper for the legacy functional API to maintain compatibility with NexusEngine.
+    """
+
+    async def generate_plan(self, intent: str, history=None):
+        logger.info(f"Generating plan via Legacy API (Robust) for: {intent}")
+        import asyncio
+        loop = asyncio.get_running_loop()
+        # Offload sync work to thread to prevent blocking the event loop
+        raw_json = await loop.run_in_executor(None, generate_plan_sync, intent)
+        try:
+            # Clean possible markdown formatting ```json ... ```
+            clean_json = raw_json.strip()
+            if clean_json.startswith("```json"):
+                clean_json = clean_json[7:]
+            if clean_json.startswith("```"):
+                clean_json = clean_json[3:]
+            if clean_json.endswith("```"):
+                clean_json = clean_json[:-3]
             
-            # Fallback Plan that demonstrates capabilities (Dynamic based on Intent)
-            logger.warning(f"Returning Mock Plan for intent: {intent}")
+            return json.loads(clean_json)
+        except json.JSONDecodeError:
+            logger.error("Failed to parse JSON from Legacy API response.")
             return {
-                "assistant_reply": f"I'm encountering some interference with the API network, but I'll deploy a simulation to address your request: '{intent}'.",
-                "execution_plan": [
-                    {
-                        "worker": "NAVIGATOR", 
-                        "action": "SEARCH", 
-                        "query": intent  # Use the user's actual intent
-                    },
-                    {
-                        "worker": "ARCHITECT", 
-                        "action": "WRITE", 
-                        "path": "mission_report.md", 
-                        "content": f"# Mission Report: {intent}\n\n(This is a generated mock summary as the AI Brain is currently rate-limited)\n\n## Analysis\nThe system has processed the request to '{intent}'.\n\n### Key Findings (Simulated):\n- Found 3 relevant sources.\n- Synthesized key data points.\n- Verified autonomy constraints."
-                    },
-                    {
-                        "worker": "ARCHITECT",
-                        "action": "EXECUTE",
-                        "command": "dir" 
-                    }
-                ]
+                "assistant_reply": "I encountered an error processing the plan.",
+                "execution_plan": []
             }
 
 planner = Planner()
